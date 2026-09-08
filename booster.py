@@ -1,23 +1,11 @@
-import asyncio
 import discord
-
-from config import BOOSTER_ROLE_ID
+from discord.ext import commands
 
 from database import (
     get_booster_role,
     save_booster_role,
-    delete_booster_role,
+    delete_booster_role
 )
-
-
-# =========================================================
-# KONFIGURASI
-# =========================================================
-
-DONATUR_ROLE_NAME = "Donatur"
-
-# Jeda pergantian warna
-COLOR_CHANGE_INTERVAL = 5
 
 
 # =========================================================
@@ -25,160 +13,100 @@ COLOR_CHANGE_INTERVAL = 5
 # =========================================================
 
 COLORS = {
-    "Hitam": 0x000000,
-    "Merah": 0xED4245,
-    "Orange": 0xE67E22,
-    "Kuning": 0xF1C40F,
-    "Hijau": 0x2ECC71,
-    "Cyan": 0x1ABC9C,
-    "Biru": 0x3498DB,
-    "Biru Muda": 0x5DADE2,
-    "Ungu": 0x9B59B6,
-    "Pink": 0xFF69B4,
-    "Magenta": 0xFF00FF,
-    "Putih": 0xFFFFFF,
+    "Hitam": discord.Colour.from_rgb(0, 0, 0),
+    "Putih": discord.Colour.from_rgb(255, 255, 255),
+    "Merah": discord.Colour.from_rgb(237, 66, 69),
+    "Biru": discord.Colour.from_rgb(52, 152, 219),
+    "Hijau": discord.Colour.from_rgb(46, 204, 113),
+    "Kuning": discord.Colour.from_rgb(241, 196, 15),
+    "Ungu": discord.Colour.from_rgb(155, 89, 182),
+    "Pink": discord.Colour.from_rgb(255, 105, 180),
+    "Orange": discord.Colour.from_rgb(230, 126, 34),
+    "Cyan": discord.Colour.from_rgb(26, 188, 156),
 }
 
 
-# Urutan warna untuk auto rainbow
-RAINBOW_COLORS = [
-    0x000000,  # Hitam
-    0xED4245,  # Merah
-    0xE67E22,  # Orange
-    0xF1C40F,  # Kuning
-    0x2ECC71,  # Hijau
-    0x1ABC9C,  # Cyan
-    0x3498DB,  # Biru
-    0x9B59B6,  # Ungu
-    0xFF69B4,  # Pink
-]
-
 # =========================================================
-# CEK AKSES
+# HELPER WARNA
 # =========================================================
 
-def has_access(member: discord.Member) -> bool:
+def get_color(name: str):
 
-    # ADMIN BOLEH
-    if member.guild_permissions.administrator:
-        return True
-
-    booster_role = member.guild.get_role(
-        BOOSTER_ROLE_ID
+    return COLORS.get(
+        name,
+        discord.Colour.default()
     )
 
-    if booster_role is None:
-        return False
-
-    return booster_role in member.roles
-
 
 # =========================================================
-# CARI ROLE DONATUR
+# CEK BOOSTER
 # =========================================================
 
-def get_donatur_role(
-    guild: discord.Guild
+def is_booster(
+    member: discord.Member
 ):
 
-    return discord.utils.get(
-        guild.roles,
-        name=DONATUR_ROLE_NAME
-    )
+    return member.premium_since is not None
 
 
 # =========================================================
-# PINDAHKAN ROLE DI ATAS DONATUR
+# CEK AKSES FITUR
+# =========================================================
+#
+# BOLEH:
+# 🚀 Server Booster
+# 👑 Administrator
+#
+# TIDAK BOLEH:
+# 👤 Member biasa
 # =========================================================
 
-async def move_role_above_donatur(
-    role: discord.Role
+def can_use_booster_feature(
+    member: discord.Member
 ):
 
-    guild = role.guild
-
-    donatur_role = get_donatur_role(
-        guild
+    return (
+        is_booster(member)
+        or member.guild_permissions.administrator
     )
-
-    if donatur_role is None:
-
-        print(
-            "⚠️ Role 'Donatur' tidak ditemukan."
-        )
-
-        return False
-
-    bot_member = guild.me
-
-    if bot_member is None:
-
-        print(
-            "❌ Bot member tidak ditemukan."
-        )
-
-        return False
-
-    # Role bot harus lebih tinggi dari target
-    if bot_member.top_role.position <= donatur_role.position:
-
-        print(
-            "❌ Role bot harus berada di atas "
-            "role Donatur."
-        )
-
-        return False
-
-    # Role yang baru dibuat biasanya berada
-    # di bawah role bot.
-    try:
-
-        await role.edit(
-            position=donatur_role.position + 1,
-            reason="YOBLOX Booster Custom Role"
-        )
-
-        print(
-            f"✅ Role {role.name} dipindahkan "
-            "ke atas Donatur."
-        )
-
-        return True
-
-    except discord.Forbidden:
-
-        print(
-            "❌ Bot tidak memiliki permission "
-            "Manage Roles."
-        )
-
-        return False
-
-    except discord.HTTPException as error:
-
-        print(
-            f"❌ Gagal memindahkan role: {error}"
-        )
-
-        return False
 
 
 # =========================================================
-# MODAL BUAT ROLE
+# MODAL NAMA CUSTOM ROLE
 # =========================================================
 
 class CreateRoleModal(
-    discord.ui.Modal,
-    title="Buat Custom Role"
+    discord.ui.Modal
 ):
 
-    role_name = discord.ui.TextInput(
-        label="Nama Role",
-        placeholder="Isi nama role yang di dibuat",
-        required=True,
-        min_length=1,
-        max_length=100
-    )
+    def __init__(self):
+
+        super().__init__(
+            title="Buat Custom Role"
+        )
+
+        self.role_name = discord.ui.TextInput(
+
+            label="Nama Role",
+
+            placeholder="Isi nama Custom Role",
+
+            required=True,
+
+            min_length=1,
+
+            max_length=100
+
+        )
+
+        self.add_item(
+            self.role_name
+        )
+
+
+    # =====================================================
+    # SUBMIT NAMA ROLE
+    # =====================================================
 
     async def on_submit(
         self,
@@ -186,59 +114,157 @@ class CreateRoleModal(
     ):
 
         member = interaction.user
+        guild = interaction.guild
+
+
+        # =================================================
+        # CEK SERVER
+        # =================================================
+
+        if guild is None:
+
+            await interaction.response.send_message(
+
+                "❌ Fitur ini hanya bisa digunakan di server.",
+
+                ephemeral=True
+
+            )
+
+            return
+
+
+        # =================================================
+        # CEK MEMBER
+        # =================================================
 
         if not isinstance(
             member,
             discord.Member
         ):
-            return
-
-        # =================================================
-        # CEK BOOSTER / ADMIN
-        # =================================================
-
-        if not has_access(member):
 
             await interaction.response.send_message(
-                "🔒 **Akses Ditolak**\n\n"
-                "Custom Role hanya tersedia untuk "
-                "**Server Booster YOBLOX**.",
+
+                "❌ Member tidak ditemukan.",
+
                 ephemeral=True
+
             )
 
             return
 
+
         # =================================================
-        # CEK DATABASE
+        # CEK AKSES
+        # =================================================
+
+        if not can_use_booster_feature(
+            member
+        ):
+
+            await interaction.response.send_message(
+
+                (
+                    "❌ Fitur ini hanya untuk "
+                    "**Server Booster YOBLOX** "
+                    "atau **Administrator**."
+                ),
+
+                ephemeral=True
+
+            )
+
+            return
+
+
+        # =================================================
+        # CEK CUSTOM ROLE LAMA
         # =================================================
 
         existing = get_booster_role(
-            interaction.guild.id,
+
+            guild.id,
+
             member.id
+
         )
+
 
         if existing:
 
-            old_role = interaction.guild.get_role(
-                existing["role_id"]
+            existing_role = guild.get_role(
+
+                int(
+                    existing["role_id"]
+                )
+
             )
 
-            if old_role:
+
+            if existing_role:
 
                 await interaction.response.send_message(
-                    "⚠️ **Kamu sudah memiliki Custom Role.**\n\n"
-                    f"Role kamu: {old_role.mention}\n\n"
-                    "Satu member hanya dapat memiliki "
-                    "**1 Custom Role**.",
+
+                    (
+                        "❌ Kamu sudah memiliki "
+                        f"Custom Role: {existing_role.mention}"
+                    ),
+
                     ephemeral=True
+
                 )
 
                 return
 
+
+            # Data database ada,
+            # tetapi role Discord sudah tidak ada.
+
             delete_booster_role(
-                interaction.guild.id,
+
+                guild.id,
+
                 member.id
+
             )
+
+
+        # =================================================
+        # CEK BOT
+        # =================================================
+
+        bot_member = guild.me
+
+
+        if bot_member is None:
+
+            await interaction.response.send_message(
+
+                "❌ Bot tidak ditemukan.",
+
+                ephemeral=True
+
+            )
+
+            return
+
+
+        # =================================================
+        # CEK MANAGE ROLES
+        # =================================================
+
+        if not bot_member.guild_permissions.manage_roles:
+
+            await interaction.response.send_message(
+
+                "❌ Bot membutuhkan permission **Manage Roles**.",
+
+                ephemeral=True
+
+            )
+
+            return
+
 
         # =================================================
         # NAMA ROLE
@@ -246,20 +272,26 @@ class CreateRoleModal(
 
         role_name = self.role_name.value.strip()
 
+
         if not role_name:
 
             await interaction.response.send_message(
+
                 "❌ Nama role tidak boleh kosong.",
+
                 ephemeral=True
+
             )
 
             return
 
+
         # =================================================
-        # FILTER NAMA ROLE
+        # FILTER NAMA
         # =================================================
 
-        banned_words = [
+        forbidden_words = [
+
             "admin",
             "administrator",
             "moderator",
@@ -268,43 +300,66 @@ class CreateRoleModal(
             "owner",
             "developer",
             "dev",
-            "helper",
-            "support",
-            "donatur",
+            "management",
+            "security",
+            "support"
+
         ]
 
-        lower_name = role_name.lower()
 
-        for word in banned_words:
+        lower_name = role_name.casefold()
+
+
+        for word in forbidden_words:
 
             if word in lower_name:
 
                 await interaction.response.send_message(
-                    "❌ Nama role tersebut tidak diperbolehkan.\n\n"
-                    "Jangan menggunakan nama yang menyerupai "
-                    "role Staff/Admin YOBLOX.",
+
+                    "❌ Nama role tersebut tidak diperbolehkan.",
+
                     ephemeral=True
+
                 )
 
                 return
+
 
         # =================================================
         # PILIH WARNA
         # =================================================
 
-        view = ColorSelectionView(
-            role_name=role_name
-        )
-
         await interaction.response.send_message(
-            embed=view.create_embed(),
-            view=view,
+
+            content=(
+
+                f"**Nama Role:** {role_name}\n\n"
+
+                "🎨 **Warna Pertama**\n"
+                "Pilih warna utama Custom Role.\n\n"
+
+                "🎨 **Warna Kedua**\n"
+                "Pilih warna kedua Custom Role.\n\n"
+
+                "Setelah selesai, tekan **Submit**."
+
+            ),
+
+            view=ColorSelectionView(
+
+                member=member,
+
+                role_name=role_name
+
+            ),
+
             ephemeral=True
+
         )
 
 
 # =========================================================
-# DROPDOWN WARNA
+# COLOR SELECT
 # =========================================================
 
 class ColorSelect(
@@ -313,71 +368,45 @@ class ColorSelect(
 
     def __init__(
         self,
-        color_number: int
+        placeholder: str,
+        select_id: str
     ):
 
         options = []
 
+
         for name in COLORS:
 
             options.append(
+
                 discord.SelectOption(
+
                     label=name,
+
                     value=name
+
                 )
+
             )
 
-        if color_number == 1:
-
-            placeholder = "Pilih Warna Pertama"
-            custom_id = "yoblox_booster_color_1"
-
-        else:
-
-            placeholder = "Pilih Warna Kedua"
-            custom_id = "yoblox_booster_color_2"
 
         super().__init__(
+
             placeholder=placeholder,
+
             min_values=1,
+
             max_values=1,
+
             options=options,
-            custom_id=custom_id
-        )
 
-        self.color_number = color_number
+            custom_id=select_id
 
-    async def callback(
-        self,
-        interaction: discord.Interaction
-    ):
-
-        view = self.view
-
-        if not isinstance(
-            view,
-            ColorSelectionView
-        ):
-            return
-
-        selected = self.values[0]
-
-        if self.color_number == 1:
-
-            view.first_color = selected
-
-        else:
-
-            view.second_color = selected
-
-        await interaction.response.edit_message(
-            embed=view.create_embed(),
-            view=view
         )
 
 
 # =========================================================
-# VIEW PILIH WARNA
+# COLOR SELECTION VIEW
 # =========================================================
 
 class ColorSelectionView(
@@ -386,6 +415,7 @@ class ColorSelectionView(
 
     def __init__(
         self,
+        member: discord.Member,
         role_name: str
     ):
 
@@ -393,391 +423,591 @@ class ColorSelectionView(
             timeout=300
         )
 
+
+        self.member = member
+
         self.role_name = role_name
 
-        self.first_color = None
-        self.second_color = None
+        self.color_1 = None
+
+        self.color_2 = None
+
+
+        # =================================================
+        # WARNA PERTAMA
+        # =================================================
+
+        self.first_select = ColorSelect(
+
+            "Pilih Warna Pertama",
+
+            "booster_color_first"
+
+        )
+
+
+        # =================================================
+        # WARNA KEDUA
+        # =================================================
+
+        self.second_select = ColorSelect(
+
+            "Pilih Warna Kedua",
+
+            "booster_color_second"
+
+        )
+
+
+        self.first_select.callback = (
+
+            self.first_color_callback
+
+        )
+
+
+        self.second_select.callback = (
+
+            self.second_color_callback
+
+        )
+
 
         self.add_item(
-            ColorSelect(1)
+            self.first_select
         )
 
         self.add_item(
-            ColorSelect(2)
+            self.second_select
         )
+
 
     # =====================================================
-    # EMBED
+    # WARNA PERTAMA
     # =====================================================
 
-    def create_embed(self):
+    async def first_color_callback(
+        self,
+        interaction: discord.Interaction
+    ):
 
-        first = (
-            self.first_color
-            if self.first_color
-            else "Belum dipilih"
+        if interaction.user.id != self.member.id:
+
+            await interaction.response.send_message(
+
+                "❌ Menu ini bukan milik kamu.",
+
+                ephemeral=True
+
+            )
+
+            return
+
+
+        self.color_1 = (
+
+            self.first_select.values[0]
+
         )
 
-        second = (
-            self.second_color
-            if self.second_color
-            else "Belum dipilih"
+
+        await interaction.response.defer()
+
+
+    # =====================================================
+    # WARNA KEDUA
+    # =====================================================
+
+    async def second_color_callback(
+        self,
+        interaction: discord.Interaction
+    ):
+
+        if interaction.user.id != self.member.id:
+
+            await interaction.response.send_message(
+
+                "❌ Menu ini bukan milik kamu.",
+
+                ephemeral=True
+
+            )
+
+            return
+
+
+        self.color_2 = (
+
+            self.second_select.values[0]
+
         )
 
-        embed = discord.Embed(
-            title="🎨 Pilih Warna Custom Role",
-            description=(
-                f"**Nama Role:** {self.role_name}\n\n"
 
-                f"**Warna Pertama**\n"
-                f"{first}\n\n"
+        await interaction.response.defer()
 
-                f"**Warna Kedua**\n"
-                f"{second}\n\n"
-
-                "Silakan pilih kedua warna, "
-                "lalu tekan **Submit**."
-            ),
-            color=discord.Color.gold()
-        )
-
-        embed.set_footer(
-            text="YOBLOX • Booster Custom Role"
-        )
-
-        return embed
 
     # =====================================================
     # SUBMIT
     # =====================================================
 
     @discord.ui.button(
+
         label="Submit",
+
         emoji="✅",
+
         style=discord.ButtonStyle.success,
-        custom_id="yoblox_booster_submit"
+
+        custom_id="booster_submit_color"
+
     )
+
     async def submit(
+
         self,
+
         interaction: discord.Interaction,
+
         button: discord.ui.Button
+
     ):
 
-        member = interaction.user
-
-        if not isinstance(
-            member,
-            discord.Member
-        ):
-            return
-
         # =================================================
-        # CEK AKSES
+        # CEK USER
         # =================================================
 
-        if not has_access(member):
+        if interaction.user.id != self.member.id:
 
             await interaction.response.send_message(
-                "🔒 **Akses Ditolak**\n\n"
-                "Fitur ini hanya tersedia untuk "
-                "**Server Booster YOBLOX**.",
+
+                "❌ Menu ini bukan milik kamu.",
+
                 ephemeral=True
+
             )
 
             return
+
 
         # =================================================
         # CEK WARNA
         # =================================================
 
-        if (
-            self.first_color is None
-            or self.second_color is None
-        ):
+        if not self.color_1 or not self.color_2:
 
             await interaction.response.send_message(
-                "⚠️ Silakan pilih **kedua warna** terlebih dahulu.",
+
+                (
+                    "❌ Silakan pilih **kedua warna** "
+                    "terlebih dahulu."
+                ),
+
                 ephemeral=True
+
             )
 
             return
 
+
         # =================================================
-        # CEK DATABASE LAGI
+        # SERVER
+        # =================================================
+
+        guild = interaction.guild
+
+
+        if guild is None:
+
+            await interaction.response.send_message(
+
+                "❌ Server tidak ditemukan.",
+
+                ephemeral=True
+
+            )
+
+            return
+
+
+        # =================================================
+        # MEMBER TERBARU
+        # =================================================
+
+        member = guild.get_member(
+
+            self.member.id
+
+        )
+
+
+        if member is None:
+
+            await interaction.response.send_message(
+
+                "❌ Member tidak ditemukan.",
+
+                ephemeral=True
+
+            )
+
+            return
+
+
+        # =================================================
+        # CEK AKSES LAGI
+        # =================================================
+
+        if not can_use_booster_feature(
+
+            member
+
+        ):
+
+            await interaction.response.send_message(
+
+                (
+                    "❌ Fitur ini hanya untuk "
+                    "**Server Booster YOBLOX** "
+                    "atau **Administrator**."
+                ),
+
+                ephemeral=True
+
+            )
+
+            return
+
+
+        # =================================================
+        # CEK ROLE LAMA
         # =================================================
 
         existing = get_booster_role(
-            interaction.guild.id,
+
+            guild.id,
+
             member.id
+
         )
+
 
         if existing:
 
-            old_role = interaction.guild.get_role(
-                existing["role_id"]
+            existing_role = guild.get_role(
+
+                int(
+                    existing["role_id"]
+                )
+
             )
 
-            if old_role:
+
+            if existing_role:
 
                 await interaction.response.send_message(
-                    "⚠️ **Kamu sudah memiliki Custom Role.**\n\n"
-                    f"Role: {old_role.mention}",
+
+                    (
+                        "❌ Kamu sudah memiliki "
+                        f"Custom Role: {existing_role.mention}"
+                    ),
+
                     ephemeral=True
+
                 )
 
                 return
 
-            delete_booster_role(
-                interaction.guild.id,
-                member.id
-            )
 
         # =================================================
-        # CEK BOT
+        # BOT
         # =================================================
 
-        bot_member = interaction.guild.me
+        bot_member = guild.me
+
 
         if bot_member is None:
 
             await interaction.response.send_message(
-                "❌ Data bot tidak ditemukan.",
+
+                "❌ Bot tidak ditemukan.",
+
                 ephemeral=True
+
             )
 
             return
+
+
+        # =================================================
+        # MANAGE ROLES
+        # =================================================
 
         if not bot_member.guild_permissions.manage_roles:
 
             await interaction.response.send_message(
-                "❌ Bot tidak memiliki permission "
-                "**Manage Roles**.",
+
+                "❌ Bot tidak memiliki permission **Manage Roles**.",
+
                 ephemeral=True
+
             )
 
             return
 
-        # =================================================
-        # WARNA AWAL
-        # =================================================
-
-        primary_color = COLORS[
-            self.first_color
-        ]
-
-        secondary_color = COLORS[
-            self.second_color
-        ]
 
         # =================================================
-        # BUAT ROLE
+        # WARNA
         # =================================================
 
-        try:
+        color_1 = get_color(
 
-            role = await interaction.guild.create_role(
-                name=self.role_name,
-                colour=discord.Colour(
-                    primary_color
-                ),
-                secondary_colour=discord.Colour(
-                    secondary_color
-                ),
-                hoist=False,
-                mentionable=False,
-                reason=(
-                    "YOBLOX Booster Custom Role | "
-                    f"{member} ({member.id})"
-                )
-            )
+            self.color_1
 
-        except discord.Forbidden:
-
-            await interaction.response.send_message(
-                "❌ Bot tidak memiliki permission "
-                "**Manage Roles**.",
-                ephemeral=True
-            )
-
-            return
-
-        except discord.HTTPException as error:
-
-            print(
-                f"[CREATE ROLE ERROR] {error}"
-            )
-
-            await interaction.response.send_message(
-                f"❌ Gagal membuat role.\n`{error}`",
-                ephemeral=True
-            )
-
-            return
-
-        except Exception as error:
-
-            print(
-                f"[CREATE ROLE ERROR] {error}"
-            )
-
-            await interaction.response.send_message(
-                "❌ Terjadi kesalahan saat membuat role.",
-                ephemeral=True
-            )
-
-            return
-
-        # =================================================
-        # PINDAHKAN DI ATAS DONATUR
-        # =================================================
-
-        moved = await move_role_above_donatur(
-            role
         )
 
-        if not moved:
 
-            print(
-                "⚠️ Role berhasil dibuat tetapi "
-                "tidak berhasil dipindahkan."
-            )
+        color_2 = get_color(
+
+            self.color_2
+
+        )
+
 
         # =================================================
-        # BERIKAN ROLE
+        # CREATE ROLE
         # =================================================
 
         try:
+
+            role = await guild.create_role(
+
+                name=self.role_name,
+
+                colour=color_1,
+
+                secondary_colour=color_2,
+
+                reason=(
+
+                    "YOBLOX Booster Custom Role - "
+
+                    f"{member} ({member.id})"
+
+                )
+
+            )
+
+
+            # =================================================
+            # POSISI CUSTOM ROLE
+            # =================================================
+            #
+            # ROLE BOT:
+            #
+            # YOBLOX CUSTOM ROLE
+            #
+            # Custom Role baru dibuat tepat
+            # di bawah role tertinggi bot.
+            #
+            # =================================================
+
+            bot_top_role = bot_member.top_role
+
+
+            target_position = (
+
+                bot_top_role.position - 1
+
+            )
+
+
+            # =================================================
+            # PASTIKAN VALID
+            # =================================================
+
+            if target_position > 0:
+
+                await role.edit(
+
+                    position=target_position,
+
+                    reason=(
+
+                        "YOBLOX Custom Role Position"
+
+                    )
+
+                )
+
+
+            # =================================================
+            # TAMBAHKAN ROLE KE MEMBER
+            # =================================================
 
             await member.add_roles(
+
                 role,
-                reason="YOBLOX Booster Custom Role"
+
+                reason=(
+
+                    "YOBLOX Booster Custom Role"
+
+                )
+
             )
+
+
+            # =================================================
+            # SIMPAN DATABASE
+            # =================================================
+
+            saved = save_booster_role(
+
+                guild_id=guild.id,
+
+                user_id=member.id,
+
+                role_id=role.id,
+
+                role_name=role.name,
+
+                color_1=self.color_1,
+
+                color_2=self.color_2
+
+            )
+
+
+            # =================================================
+            # DATABASE GAGAL
+            # =================================================
+
+            if not saved:
+
+                try:
+
+                    await role.delete(
+
+                        reason=(
+
+                            "Database save failed"
+
+                        )
+
+                    )
+
+                except Exception:
+
+                    pass
+
+
+                await interaction.response.send_message(
+
+                    (
+                        "❌ Custom Role gagal "
+                        "disimpan ke database."
+                    ),
+
+                    ephemeral=True
+
+                )
+
+                return
+
+
+            # =================================================
+            # SUCCESS
+            # =================================================
+
+            await interaction.response.edit_message(
+
+                content=(
+
+                    "## ✅ Custom Role Berhasil Dibuat!\n\n"
+
+                    f"🎨 **Nama:** {role.mention}\n"
+
+                    f"🔹 **Warna 1:** {self.color_1}\n"
+
+                    f"🔹 **Warna 2:** {self.color_2}\n\n"
+
+                    "Role sudah diberikan kepada kamu."
+
+                ),
+
+                view=None
+
+            )
+
+
+        # =====================================================
+        # FORBIDDEN
+        # =====================================================
 
         except discord.Forbidden:
 
-            try:
-
-                await role.delete(
-                    reason="Failed to assign Custom Role"
-                )
-
-            except Exception:
-                pass
-
             await interaction.response.send_message(
-                "❌ Role berhasil dibuat tetapi "
-                "tidak bisa diberikan kepada kamu.\n\n"
-                "Pastikan posisi role bot berada di atas "
-                "Custom Role.",
+
+                (
+                    "❌ Bot tidak memiliki permission "
+                    "yang cukup untuk membuat atau "
+                    "mengatur role."
+                ),
+
                 ephemeral=True
+
             )
 
-            return
 
-        except discord.HTTPException as error:
+        # =====================================================
+        # HTTP ERROR
+        # =====================================================
 
-            try:
-
-                await role.delete(
-                    reason="Failed to assign Custom Role"
-                )
-
-            except Exception:
-                pass
-
-            await interaction.response.send_message(
-                f"❌ Gagal memberikan role.\n`{error}`",
-                ephemeral=True
-            )
-
-            return
-
-        # =================================================
-        # SIMPAN DATABASE
-        # =================================================
-
-        try:
-
-            save_booster_role(
-                interaction.guild.id,
-                member.id,
-                role.id
-            )
-
-        except Exception as error:
+        except discord.HTTPException as e:
 
             print(
-                f"[DATABASE ERROR] {error}"
+
+                f"❌ Discord HTTP Error: {e}"
+
             )
 
-            try:
-
-                await member.remove_roles(
-                    role,
-                    reason="Database error"
-                )
-
-            except Exception:
-                pass
-
-            try:
-
-                await role.delete(
-                    reason="Database error"
-                )
-
-            except Exception:
-                pass
 
             await interaction.response.send_message(
-                "❌ Custom Role gagal disimpan "
-                "ke database.",
+
+                (
+                    "❌ Terjadi kesalahan Discord "
+                    "saat membuat Custom Role."
+                ),
+
                 ephemeral=True
+
             )
 
-            return
 
-        # =================================================
-        # BERHASIL
-        # =================================================
+        # =====================================================
+        # ERROR LAIN
+        # =====================================================
 
-        embed = discord.Embed(
-            title="🎉 Custom Role Berhasil Dibuat!",
-            description=(
-                f"Role kamu: {role.mention}\n\n"
+        except Exception as e:
 
-                f"🎨 **Warna Pertama:** "
-                f"{self.first_color}\n"
+            print(
 
-                f"🎨 **Warna Kedua:** "
-                f"{self.second_color}\n\n"
+                f"❌ Create Role Error: {e}"
 
-                "Role otomatis ditempatkan "
-                "**di atas Donatur**.\n\n"
-
-                "🌈 Warna role akan berganti "
-                "secara otomatis.\n\n"
-
-                "Terima kasih sudah menjadi "
-                "**Booster YOBLOX**! 🚀"
-            ),
-            color=discord.Colour(
-                primary_color
             )
-        )
 
-        embed.set_footer(
-            text="YOBLOX • Booster Custom Role"
-        )
 
-        await interaction.response.edit_message(
-            embed=embed,
-            view=None
-        )
+            await interaction.response.send_message(
+
+                "❌ Terjadi kesalahan internal.",
+
+                ephemeral=True
+
+            )
 
 
 # =========================================================
-# PANEL UTAMA
+# BOOSTER PANEL
 # =========================================================
 
 class BoosterPanelView(
@@ -790,492 +1020,551 @@ class BoosterPanelView(
             timeout=None
         )
 
+
     # =====================================================
     # BUAT ROLE
     # =====================================================
 
     @discord.ui.button(
+
         label="Buat Role",
+
         emoji="🎨",
+
         style=discord.ButtonStyle.success,
-        custom_id="yoblox_booster_create"
+
+        custom_id="booster_create_role"
+
     )
+
     async def create_role(
+
         self,
+
         interaction: discord.Interaction,
+
         button: discord.ui.Button
+
     ):
 
         member = interaction.user
 
-        if not isinstance(
-            member,
-            discord.Member
-        ):
-            return
+        guild = interaction.guild
+
 
         # =================================================
-        # CEK AKSES
+        # SERVER
         # =================================================
 
-        if not has_access(member):
+        if guild is None:
 
             await interaction.response.send_message(
-                "🔒 **Akses Ditolak**\n\n"
-                "Custom Role hanya bisa digunakan "
-                "oleh **Server Booster YOBLOX**.\n\n"
-                "🚀 Boost Server terlebih dahulu "
-                "untuk mendapatkan akses.",
+
+                "❌ Hanya bisa digunakan di server.",
+
                 ephemeral=True
+
             )
 
             return
 
+
         # =================================================
-        # CEK DATABASE
+        # MEMBER
+        # =================================================
+
+        if not isinstance(
+
+            member,
+
+            discord.Member
+
+        ):
+
+            await interaction.response.send_message(
+
+                "❌ Member tidak ditemukan.",
+
+                ephemeral=True
+
+            )
+
+            return
+
+
+        # =================================================
+        # AKSES
+        # =================================================
+
+        if not can_use_booster_feature(
+
+            member
+
+        ):
+
+            await interaction.response.send_message(
+
+                (
+                    "❌ Fitur ini hanya untuk "
+                    "**Server Booster YOBLOX** "
+                    "atau **Administrator**."
+                ),
+
+                ephemeral=True
+
+            )
+
+            return
+
+
+        # =================================================
+        # CEK ROLE LAMA
         # =================================================
 
         existing = get_booster_role(
-            interaction.guild.id,
+
+            guild.id,
+
             member.id
+
         )
+
 
         if existing:
 
-            role = interaction.guild.get_role(
-                existing["role_id"]
+            existing_role = guild.get_role(
+
+                int(
+                    existing["role_id"]
+                )
+
             )
 
-            if role:
+
+            if existing_role:
 
                 await interaction.response.send_message(
-                    "⚠️ **Kamu sudah memiliki Custom Role.**\n\n"
-                    f"Role kamu: {role.mention}\n\n"
-                    "Satu member hanya dapat memiliki "
-                    "**1 Custom Role**.",
+
+                    (
+                        "❌ Kamu sudah memiliki "
+                        f"Custom Role: {existing_role.mention}"
+                    ),
+
                     ephemeral=True
+
                 )
 
                 return
 
+
             delete_booster_role(
-                interaction.guild.id,
+
+                guild.id,
+
                 member.id
+
             )
 
+
         # =================================================
-        # BUKA MODAL
+        # OPEN MODAL
         # =================================================
 
         await interaction.response.send_modal(
+
             CreateRoleModal()
+
         )
+
 
     # =====================================================
     # HAPUS ROLE
     # =====================================================
 
     @discord.ui.button(
+
         label="Hapus Role",
+
         emoji="🗑️",
+
         style=discord.ButtonStyle.danger,
-        custom_id="yoblox_booster_delete"
+
+        custom_id="booster_delete_role"
+
     )
+
     async def delete_role(
+
         self,
+
         interaction: discord.Interaction,
+
         button: discord.ui.Button
+
     ):
 
         member = interaction.user
 
-        if not isinstance(
-            member,
-            discord.Member
-        ):
-            return
+        guild = interaction.guild
+
 
         # =================================================
-        # CEK AKSES
+        # SERVER
         # =================================================
 
-        if not has_access(member):
+        if guild is None:
 
             await interaction.response.send_message(
-                "🔒 **Akses Ditolak**\n\n"
-                "Fitur ini hanya tersedia untuk "
-                "**Server Booster YOBLOX**.",
+
+                "❌ Hanya bisa digunakan di server.",
+
                 ephemeral=True
+
             )
 
             return
 
+
         # =================================================
-        # DATABASE
+        # CEK DATABASE
         # =================================================
 
-        data = get_booster_role(
-            interaction.guild.id,
+        existing = get_booster_role(
+
+            guild.id,
+
             member.id
+
         )
 
-        if not data:
+
+        if not existing:
 
             await interaction.response.send_message(
-                "❌ Kamu belum memiliki Custom Role.",
+
+                "❌ Kamu tidak memiliki Custom Role.",
+
                 ephemeral=True
+
             )
 
             return
 
-        # =================================================
-        # ROLE DISCORD
-        # =================================================
-
-        role = interaction.guild.get_role(
-            data["role_id"]
-        )
-
-        if role is None:
-
-            delete_booster_role(
-                interaction.guild.id,
-                member.id
-            )
-
-            await interaction.response.send_message(
-                "ℹ️ Custom Role sudah tidak ditemukan.\n"
-                "Data role telah dibersihkan.",
-                ephemeral=True
-            )
-
-            return
 
         # =================================================
-        # CEK POSISI ROLE
-        # =================================================
-
-        bot_member = interaction.guild.me
-
-        if bot_member is None:
-
-            await interaction.response.send_message(
-                "❌ Data bot tidak ditemukan.",
-                ephemeral=True
-            )
-
-            return
-
-        if role >= bot_member.top_role:
-
-            await interaction.response.send_message(
-                "❌ Bot tidak dapat menghapus role ini.\n\n"
-                "Pastikan role bot berada di atas "
-                "Custom Role.",
-                ephemeral=True
-            )
-
-            return
-
-        # =================================================
-        # HAPUS
+        # DELETE ROLE
         # =================================================
 
         try:
 
-            await role.delete(
-                reason=(
-                    "YOBLOX Booster Custom Role deleted | "
-                    f"{member} ({member.id})"
+            role = guild.get_role(
+
+                int(
+                    existing["role_id"]
                 )
+
             )
+
+
+            if role:
+
+                # =================================================
+                # CEK HIERARCHY
+                # =================================================
+
+                if (
+
+                    guild.me
+
+                    and role >= guild.me.top_role
+
+                ):
+
+                    await interaction.response.send_message(
+
+                        (
+                            "❌ Bot tidak bisa menghapus "
+                            "role tersebut karena posisi "
+                            "role terlalu tinggi."
+                        ),
+
+                        ephemeral=True
+
+                    )
+
+                    return
+
+
+                await role.delete(
+
+                    reason=(
+
+                        "YOBLOX Booster Custom Role "
+                        f"deleted by {member}"
+
+                    )
+
+                )
+
+
+            # =================================================
+            # DATABASE
+            # =================================================
+
+            delete_booster_role(
+
+                guild.id,
+
+                member.id
+
+            )
+
+
+            await interaction.response.send_message(
+
+                "✅ Custom Role kamu berhasil dihapus.",
+
+                ephemeral=True
+
+            )
+
 
         except discord.Forbidden:
 
             await interaction.response.send_message(
-                "❌ Bot tidak memiliki izin "
-                "untuk menghapus role.",
+
+                (
+                    "❌ Bot tidak memiliki permission "
+                    "untuk menghapus role tersebut."
+                ),
+
                 ephemeral=True
+
             )
 
-            return
 
-        except discord.HTTPException as error:
+        except Exception as e:
+
+            print(
+
+                f"❌ Delete Role Error: {e}"
+
+            )
+
 
             await interaction.response.send_message(
-                f"❌ Gagal menghapus role.\n`{error}`",
+
+                "❌ Terjadi kesalahan saat menghapus role.",
+
                 ephemeral=True
+
             )
 
-            return
-
-        # =================================================
-        # DATABASE
-        # =================================================
-
-        delete_booster_role(
-            interaction.guild.id,
-            member.id
-        )
-
-        # =================================================
-        # SELESAI
-        # =================================================
-
-        await interaction.response.send_message(
-            "🗑️ **Custom Role berhasil dihapus.**\n\n"
-            "Kamu dapat membuat Custom Role baru "
-            "selama masih menjadi **Server Booster YOBLOX**.",
-            ephemeral=True
-        )
-
 
 # =========================================================
-# AUTO HAPUS SAAT BERHENTI BOOST
+# COG
 # =========================================================
 
-async def handle_booster_update(
-    before: discord.Member,
-    after: discord.Member
+class Booster(
+    commands.Cog
 ):
-
-    booster_role = after.guild.get_role(
-        BOOSTER_ROLE_ID
-    )
-
-    if booster_role is None:
-        return
-
-    was_booster = (
-        booster_role in before.roles
-    )
-
-    is_booster = (
-        booster_role in after.roles
-    )
-
-    # Tidak ada perubahan status booster
-    if was_booster == is_booster:
-        return
-
-    # =====================================================
-    # BERHENTI BOOST
-    # =====================================================
-
-    if was_booster and not is_booster:
-
-        # ADMIN TETAP BOLEH MEMILIKI ROLE
-        if after.guild_permissions.administrator:
-            return
-
-        data = get_booster_role(
-            after.guild.id,
-            after.id
-        )
-
-        if not data:
-            return
-
-        role = after.guild.get_role(
-            data["role_id"]
-        )
-
-        if role:
-
-            bot_member = after.guild.me
-
-            if (
-                bot_member
-                and role < bot_member.top_role
-            ):
-
-                try:
-
-                    await role.delete(
-                        reason=(
-                            "Member stopped boosting YOBLOX"
-                        )
-                    )
-
-                    print(
-                        f"🗑️ Custom Role {role.id} "
-                        f"dihapus karena {after} "
-                        "berhenti boost."
-                    )
-
-                except discord.HTTPException as error:
-
-                    print(
-                        f"❌ Gagal menghapus role: {error}"
-                    )
-
-        delete_booster_role(
-            after.guild.id,
-            after.id
-        )
-
-
-# =========================================================
-# AUTO COLOR MANAGER
-# =========================================================
-
-class AutoColorManager:
 
     def __init__(
         self,
-        bot: discord.Client
+        bot: commands.Bot
     ):
 
         self.bot = bot
 
-        self.running = False
-        self.task = None
-
-        self.color_index = 0
 
     # =====================================================
-    # START
+    # SETUP PANEL
     # =====================================================
 
-    def start(self):
+    @commands.command(
+        name="setupbooster"
+    )
 
-        if self.task is None:
+    @commands.has_permissions(
+        administrator=True
+    )
 
-            self.task = asyncio.create_task(
-                self.color_loop()
-            )
+    async def setupbooster(
 
-    # =====================================================
-    # COLOR LOOP
-    # =====================================================
+        self,
 
-    async def color_loop(self):
+        ctx: commands.Context
 
-        await self.bot.wait_until_ready()
+    ):
 
-        self.running = True
+        # =================================================
+        # EMBED
+        # =================================================
 
-        print(
-            "🌈 Auto Color Custom Role aktif."
+        embed = discord.Embed(
+
+            title="🚀 Booster Custom Role",
+
+            description=(
+
+                "Sebagai bentuk apresiasi untuk kamu yang "
+                "telah membantu support **YOBLOX** dengan "
+                "melakukan Boost Server, kamu mendapatkan "
+                "akses untuk membuat Custom Role sendiri.\n\n"
+
+
+                "✨ **FITUR**\n"
+
+                "• Buat role dengan nama pilihanmu\n"
+
+                "• Pilih dua warna untuk Custom Role\n"
+
+                "• Custom Role khusus Server Booster\n"
+
+                "• Administrator dapat menggunakan fitur\n"
+
+                "• Bisa menghapus Custom Role sendiri\n"
+
+                "• 1 member hanya dapat memiliki 1 Custom Role\n\n"
+
+
+                "📜 **KETENTUAN**\n"
+
+                "1. Custom Role hanya tersedia selama kamu "
+                "menjadi **Server Booster YOBLOX**.\n\n"
+
+                "2. Dilarang menggunakan nama yang mengandung "
+                "unsur **SARA, penghinaan, seksual, atau "
+                "provokasi**.\n\n"
+
+                "3. Dilarang membuat role yang menyerupai "
+                "**Admin, Moderator, atau Staff YOBLOX**.\n\n"
+
+                "4. Dilarang menggunakan Custom Role untuk "
+                "kegiatan **jual beli atau perdagangan**.\n\n"
+
+
+                "⚠️ Role yang melanggar ketentuan dapat "
+                "**dihapus tanpa pemberitahuan**.\n\n"
+
+
+                "💎 Terima kasih sudah support **YOBLOX** "
+                "dengan Boost Server!"
+
+            ),
+
+            colour=discord.Colour.gold()
+
         )
 
-        while not self.bot.is_closed():
 
-            try:
+        # =================================================
+        # FOOTER
+        # =================================================
 
-                await self.update_all_roles()
+        embed.set_footer(
 
-            except Exception as error:
+            text="YOBLOX • Booster Custom Role"
 
-                print(
-                    f"❌ Auto Color Error: {error}"
-                )
+        )
 
-            await asyncio.sleep(
-                COLOR_CHANGE_INTERVAL
-            )
+
+        # =================================================
+        # SEND PANEL
+        # =================================================
+
+        await ctx.send(
+
+            embed=embed,
+
+            view=BoosterPanelView()
+
+        )
+
+
+        # =================================================
+        # DELETE COMMAND
+        # =================================================
+
+        try:
+
+            await ctx.message.delete()
+
+        except Exception:
+
+            pass
+
 
     # =====================================================
-    # UPDATE SEMUA ROLE
+    # COMMAND ERROR
     # =====================================================
 
-    async def update_all_roles(self):
+    @setupbooster.error
 
-        color_value = RAINBOW_COLORS[
-            self.color_index
-        ]
+    async def setupbooster_error(
 
-        self.color_index += 1
+        self,
 
-        if self.color_index >= len(
-            RAINBOW_COLORS
+        ctx,
+
+        error
+
+    ):
+
+        if isinstance(
+
+            error,
+
+            commands.MissingPermissions
+
         ):
 
-            self.color_index = 0
+            await ctx.send(
 
-        color = discord.Colour(
-            color_value
-        )
+                (
+                    "❌ Kamu harus memiliki permission "
+                    "**Administrator**."
+                ),
 
-        # Ambil semua guild
-        for guild in self.bot.guilds:
+                delete_after=5
 
-            try:
+            )
 
-                # Ambil data Custom Role
-                # dari setiap member booster
-                for member in guild.members:
+        else:
 
-                    data = get_booster_role(
-                        guild.id,
-                        member.id
-                    )
+            print(
 
-                    if not data:
-                        continue
+                f"❌ setupbooster error: {error}"
 
-                    role = guild.get_role(
-                        data["role_id"]
-                    )
-
-                    if role is None:
-                        continue
-
-                    # Pastikan role memang dimiliki member
-                    if role not in member.roles:
-                        continue
-
-                    # Pastikan bot bisa edit role
-                    bot_member = guild.me
-
-                    if bot_member is None:
-                        continue
-
-                    if role >= bot_member.top_role:
-                        continue
-
-                    try:
-
-                        await role.edit(
-                            colour=color,
-                            reason="YOBLOX Booster Auto Color"
-                        )
-
-                    except discord.Forbidden:
-
-                        print(
-                            f"⚠️ Tidak bisa mengubah "
-                            f"warna role {role.id}"
-                        )
-
-                    except discord.HTTPException:
-                        pass
-
-            except Exception as error:
-
-                print(
-                    f"❌ Guild Auto Color Error "
-                    f"({guild.id}): {error}"
-                )
+            )
 
 
 # =========================================================
-# SETUP AUTO COLOR
+# EXTENSION SETUP
 # =========================================================
 
-auto_color_manager = None
-
-
-def start_auto_color(
-    bot: discord.Client
+async def setup(
+    bot
 ):
 
-    global auto_color_manager
+    await bot.add_cog(
 
-    if auto_color_manager is None:
+        Booster(bot)
 
-        auto_color_manager = AutoColorManager(
-            bot
-        )
+    )
 
-        auto_color_manager.start()
+
+    # =================================================
+    # PERSISTENT VIEW
+    # =================================================
+
+    bot.add_view(
+
+        BoosterPanelView()
+
+    )
+
+
+    print(
+        "✅ Booster Custom Role aktif."
+    )
